@@ -154,6 +154,20 @@ class DataConfig(BaseModel):
         return v
 
 
+class LLMModelConfig(BaseModel):
+    """
+    Konfiguration für ein einzelnes LLM.
+    
+    Ermöglicht die Definition mehrerer LLMs mit individuellen Einstellungen
+    für den Modellvergleich.
+    """
+    name: str  # HuggingFace Modellname
+    description: str = ""  # Kurze Beschreibung des Modells
+    load_in_4bit: bool = True  # Quantisierung für weniger Memory
+    load_in_8bit: bool = False  # Alternative Quantisierung
+    dtype: str = "float16"  # Datentyp für Berechnungen
+
+
 class ModelConfig(BaseModel):
     """
     Konfiguration für Modellarchitektur und -parameter.
@@ -162,21 +176,23 @@ class ModelConfig(BaseModel):
     ermöglicht einfaches Experiment-Tracking und Reproduzierbarkeit.
     """
 
-    # Baseline LLMs (Liste von lokalen großen Modellen für Vergleich)
-    # Unterstützt mehrere Modelle für umfassendere Evaluation
-    baseline_llm_names: List[str] = Field(
+    # Baseline LLMs (Liste von Modellen für Vergleichsevaluation)
+    # Jedes Modell hat seine eigene Konfiguration für Flexibilität
+    baseline_llms: List[LLMModelConfig] = Field(
         default=[
-            "Qwen/Qwen2.5-3B-Instruct",       # 3B Parameter - ähnlich zu Llama-3.2-3B
-            "mistralai/Mistral-7B-Instruct-v0.3",  # 7B Parameter - größere Referenz
+            LLMModelConfig(
+                name="Qwen/Qwen2.5-3B-Instruct",
+                description="3B Parameter - kompaktes aber leistungsstarkes Modell",
+                load_in_4bit=True,
+            ),
+            LLMModelConfig(
+                name="mistralai/Mistral-7B-Instruct-v0.3",
+                description="7B Parameter - größere Referenz für Vergleich",
+                load_in_4bit=True,
+            ),
         ],
-        description="Liste der Baseline-LLMs für Vergleichsevaluation"
+        description="Liste der Baseline-LLMs mit individuellen Konfigurationen"
     )
-    # Deprecated: Wird für Rückwärtskompatibilität beibehalten
-    baseline_llm_name: str = "Qwen/Qwen2.5-3B-Instruct"  # Primäres LLM
-    baseline_llm_device: str = "cuda"  # oder "cpu" oder "mps" für Mac
-    baseline_llm_dtype: str = "float16"  # Reduziert Memory-Usage
-    baseline_llm_load_in_8bit: bool = False
-    baseline_llm_load_in_4bit: bool = True  # Für weniger GPU-Memory
 
     # Small Language Model (für Finetuning)
     slm_name: str = "microsoft/Phi-3-mini-4k-instruct"  # Kompaktes Modell
@@ -473,6 +489,7 @@ __all__ = [
     "Config",
     "PathConfig",
     "DataConfig",
+    "LLMModelConfig",
     "ModelConfig",
     "TrainingConfig",
     "EvaluationConfig",

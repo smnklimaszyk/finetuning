@@ -118,7 +118,7 @@ def load_and_prepare_data(config):
     return train_dataset, val_dataset, test_dataset, processor
 
 
-def evaluate_baseline_llm(config, test_dataset, processor, model_name: str = None):
+def evaluate_baseline_llm(config, test_dataset, processor, llm_config=None):
     """
     Schritt 2: Evaluiere Baseline LLM.
     
@@ -126,22 +126,26 @@ def evaluate_baseline_llm(config, test_dataset, processor, model_name: str = Non
         config: Experiment-Konfiguration
         test_dataset: Test-Datensatz für Evaluation
         processor: Datenverarbeitungs-Pipeline
-        model_name: Optional - spezifischer Modellname (überschreibt config)
+        llm_config: Optional - LLMModelConfig mit Modelleinstellungen
     
     Returns:
         Dictionary mit Evaluationsmetriken
     """
-    llm_name = model_name or config.model.baseline_llm_name
-    model_short_name = llm_name.split("/")[-1]  # Extrahiere kurzen Namen
+    # Fallback auf erstes konfiguriertes LLM wenn keine Config übergeben
+    if llm_config is None:
+        llm_config = config.model.baseline_llms[0]
+    
+    model_short_name = llm_config.name.split("/")[-1]
     
     logger.info("=" * 60)
     logger.info(f"STEP 2: Evaluating Baseline LLM: {model_short_name}")
     logger.info("=" * 60)
 
     llm = LLMModel(
-        model_name=llm_name,
+        model_name=llm_config.name,
         device=get_device(),
-        load_in_4bit=config.model.baseline_llm_load_in_4bit,
+        load_in_4bit=llm_config.load_in_4bit,
+        load_in_8bit=llm_config.load_in_8bit,
     )
 
     llm.load()
@@ -281,7 +285,9 @@ def main():
 
     # Override mit CLI args
     if args.model_llm:
-        config.model.baseline_llm_name = args.model_llm
+        # CLI Override: Ersetze alle LLMs mit dem angegebenen Modell
+        from config.base_config import LLMModelConfig
+        config.model.baseline_llms = [LLMModelConfig(name=args.model_llm, description="CLI Override")]
     if args.model_slm:
         config.model.slm_name = args.model_slm
 
@@ -302,16 +308,17 @@ def main():
     if args.experiment in ["baseline", "full"]:
         # Evaluiere alle konfigurierten Baseline LLMs
         if config.experiment.run_baseline_llm:
-            for llm_name in config.model.baseline_llm_names:
-                model_short_name = llm_name.split("/")[-1]
+            for llm_config in config.model.baseline_llms:
+                model_short_name = llm_config.name.split("/")[-1]
                 result_key = f"Baseline_LLM_{model_short_name}"
                 try:
-                    logger.info(f"\n>>> Evaluating LLM: {llm_name}")
+                    logger.info(f"\n>>> Evaluating LLM: {llm_config.name}")
+                    logger.info(f"    Description: {llm_config.description}")
                     results[result_key] = evaluate_baseline_llm(
-                        config, test_dataset, processor, model_name=llm_name
+                        config, test_dataset, processor, llm_config=llm_config
                     )
                 except Exception as e:
-                    logger.error(f"Error evaluating Baseline LLM ({llm_name}): {e}")
+                    logger.error(f"Error evaluating Baseline LLM ({llm_config.name}): {e}")
                     # Versuche mit dem nächsten Modell fortzufahren
                     continue
 
