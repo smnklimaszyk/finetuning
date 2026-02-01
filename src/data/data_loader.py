@@ -69,7 +69,6 @@ class MedSynthDataLoader:
         try:
             # Lade Datensatz von HuggingFace Hub
             # cache_dir: Lokales Verzeichnis für Downloads
-            # Note: trust_remote_code wurde in neueren HF-Versionen entfernt
             self.dataset = load_dataset(
                 self.dataset_name,
                 cache_dir=str(self.cache_dir) if self.cache_dir else None,

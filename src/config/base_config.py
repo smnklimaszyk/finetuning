@@ -131,7 +131,7 @@ class DataConfig(BaseModel):
 
     # Batch Processing
     batch_size: int = 8
-    num_workers: int = 1  # Auf 1 gesetzt für macOS Kompatibilität (Fork-Probleme mit multiprocessing)
+    num_workers: int = 4  # Auf 1 gesetzt für macOS Kompatibilität (Fork-Probleme mit multiprocessing)
     prefetch_factor: int = 2
 
     # Caching (Speed-up für wiederholte Läufe)
