@@ -42,15 +42,34 @@ class FineTuner:
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
+        # Prepare model loading kwargs with optimizations
+        model_kwargs = {
+            "device_map": "auto"
+        }
+        
+        # Use BF16/FP16 based on config
+        if self.config.training.bf16:
+            model_kwargs["torch_dtype"] = torch.bfloat16
+        elif self.config.training.fp16:
+            model_kwargs["torch_dtype"] = torch.float16
+        
+        # Add Flash Attention 2 if specified in config (RTX 5090 optimization)
+        if hasattr(self.config.model, 'attn_implementation'):
+            model_kwargs["attn_implementation"] = self.config.model.attn_implementation
+            logger.info(f"✅ Using {self.config.model.attn_implementation} for 2-3x attention speedup")
+        
+        # Load model with optimizations
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model.slm_name,
-            torch_dtype=torch.float16 if self.config.training.fp16 else torch.bfloat16,
-            device_map="auto"
+            **model_kwargs
         )
         
-        # Aktiviere Gradient Checkpointing für Memory-Effizienz
+        # Aktiviere Gradient Checkpointing für Memory-Effizienz (if enabled)
         if self.config.training.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
+            logger.info("⚠️  Gradient checkpointing enabled - slower but saves memory")
+        else:
+            logger.info("✅ Gradient checkpointing disabled - using full speed mode")
         
         logger.info("Model and tokenizer loaded")
     
@@ -73,6 +92,15 @@ class FineTuner:
         
         self.model = get_peft_model(self.model, lora_config)
         self.model.print_trainable_parameters()
+        
+        # Apply torch.compile for graph optimization (RTX 5090 optimization)
+        if hasattr(self.config.training, 'torch_compile') and self.config.training.torch_compile:
+            logger.info("✅ Applying torch.compile for 20-40% speedup...")
+            try:
+                self.model = torch.compile(self.model)
+                logger.info("✅ torch.compile successfully applied!")
+            except Exception as e:
+                logger.warning(f"⚠️  torch.compile failed: {e}. Continuing without compilation.")
     
     def train(
         self,
@@ -103,6 +131,7 @@ class FineTuner:
             weight_decay=self.config.training.weight_decay,
             warmup_steps=self.config.training.warmup_steps,
             lr_scheduler_type=self.config.training.lr_scheduler_type,
+            optim=self.config.training.optimizer,  # Uses fused optimizer from config
             fp16=self.config.training.fp16,
             bf16=self.config.training.bf16,
             logging_steps=self.config.training.logging_steps,
@@ -119,6 +148,8 @@ class FineTuner:
             seed=self.config.training.seed,
             max_grad_norm=self.config.training.max_grad_norm,
         )
+        
+        logger.info("✅ Using optimizer: {}".format(self.config.training.optimizer))
         
         # Trainer
         self.trainer = Trainer(
