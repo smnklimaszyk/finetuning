@@ -245,6 +245,11 @@ class ModelConfig(BaseModel):
     )
     slm_load_in_4bit: bool = False  # DISABLED - 32GB VRAM is sufficient for native BF16
 
+    # === Runtime Field (set dynamically during training) ===
+    # TEMPORARY: FineTuner still expects config.model.slm_name
+    # This gets set at runtime to the current SLM being trained
+    slm_name: Optional[str] = None
+
     # Attention Implementation (CRITICAL for 2-3x speedup)
     attn_implementation: str = (
         "flash_attention_2"  # Use Flash Attention 2 (or 3 if available)
