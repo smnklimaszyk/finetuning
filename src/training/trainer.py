@@ -23,22 +23,35 @@ logger = logging.getLogger(__name__)
 class FineTuner:
     """
     Klasse zum Finetuning von Language Models mit LoRA.
-    
+
     LoRA (Low-Rank Adaptation): Trainiert nur kleine Adapter-Matrizen
     statt des ganzen Modells. Spart viel Memory und ist schneller.
     """
-    
-    def __init__(self, config):
+
+    def __init__(self, config, model_name: Optional[str] = None):
+        """
+        Initialisiert FineTuner.
+
+        Args:
+            config: Experiment-Konfiguration
+            model_name: Optional - Überschreibt config.model.slm_name
+                       Nützlich für Training mehrerer Modelle
+        """
         self.config = config
+        self.model_name = model_name or getattr(config.model, 'slm_name', None)
+
+        if self.model_name is None:
+            raise ValueError("model_name must be provided either via parameter or config.model.slm_name")
+
         self.model = None
         self.tokenizer = None
         self.trainer = None
-    
+
     def setup_model_and_tokenizer(self):
         """Lädt Basis-Modell und Tokenizer."""
-        logger.info(f"Loading model: {self.config.model.slm_name}")
-        
-        self.tokenizer = AutoTokenizer.from_pretrained(self.config.model.slm_name)
+        logger.info(f"Loading model: {self.model_name}")
+
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
         
@@ -60,7 +73,7 @@ class FineTuner:
         
         # Load model with optimizations
         self.model = AutoModelForCausalLM.from_pretrained(
-            self.config.model.slm_name,
+            self.model_name,
             **model_kwargs
         )
         

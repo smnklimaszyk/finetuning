@@ -217,13 +217,8 @@ def train_and_evaluate_slm(
     model_output_dir = config.paths.finetuned_models_dir / model_short_name
     model_output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Temporär: Update config.model.slm_name für Trainer
-    # (Trainer nutzt noch config.model.slm_name)
-    original_slm_name = getattr(config.model, "slm_name", None)
-    config.model.slm_name = slm_config.name
-
-    # Training
-    trainer = FineTuner(config)
+    # Training mit explizitem model_name (kein Config-Modification nötig!)
+    trainer = FineTuner(config, model_name=slm_config.name)
     trainer.setup_model_and_tokenizer()
     trainer.setup_lora()
 
@@ -234,10 +229,6 @@ def train_and_evaluate_slm(
     )
 
     logger.info(f"Training complete for {model_short_name}!")
-
-    # Restore original config
-    if original_slm_name:
-        config.model.slm_name = original_slm_name
 
     # Cleanup nach Training
     del trainer
