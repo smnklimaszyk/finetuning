@@ -1,0 +1,51 @@
+{
+  "name": "Fall 002 - Essentielle Hypertonie",
+  "expected_icd10": "I10",
+  "description": "Patient mit Bluthochdruck-Symptomen",
+  "messages": [
+    {
+      "role": "doctor",
+      "message": "Guten Morgen! Was kann ich heute für Sie tun?"
+    },
+    {
+      "role": "patient",
+      "message": "Guten Morgen Doktor. Ich habe in letzter Zeit öfter Kopfschmerzen und fühle mich manchmal schwindelig."
+    },
+    {
+      "role": "doctor",
+      "message": "Wie lange haben Sie diese Beschwerden schon?"
+    },
+    {
+      "role": "patient",
+      "message": "Seit etwa zwei Wochen. Die Kopfschmerzen kommen vor allem morgens."
+    },
+    {
+      "role": "doctor",
+      "message": "Haben Sie auch Herzrasen oder Atemnot bemerkt?"
+    },
+    {
+      "role": "patient",
+      "message": "Ja, manchmal spüre ich mein Herz stark klopfen, besonders wenn ich Treppen steige."
+    },
+    {
+      "role": "doctor",
+      "message": "Wurde bei Ihnen schon einmal der Blutdruck gemessen?"
+    },
+    {
+      "role": "patient",
+      "message": "Ja, vor ein paar Jahren war er etwas erhöht, aber ich habe nichts dagegen unternommen."
+    },
+    {
+      "role": "doctor",
+      "message": "Gibt es Bluthochdruck in Ihrer Familie?"
+    },
+    {
+      "role": "patient",
+      "message": "Ja, mein Vater und meine Schwester haben beide Bluthochdruck."
+    },
+    {
+      "role": "doctor",
+      "message": "Ich messe jetzt Ihren Blutdruck. 165/95 mmHg - das ist deutlich erhöht. Zusammen mit Ihrer Familiengeschichte und den Symptomen deutet das auf eine essentielle Hypertonie hin. Wir sollten mit einer Behandlung beginnen."
+    }
+  ]
+}

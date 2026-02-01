@@ -21,18 +21,7 @@ logger = logging.getLogger(__name__)
 
 
 class LLMModel(BaseModel):
-    """
-    Wrapper für Large Language Models.
-
-    Unterstützt Features wie:
-    - 4-bit/8-bit Quantisierung (für weniger Memory)
-    - Batched Inference
-    - Verschiedene Generation-Strategien
-    - Flash Attention (für schnellere Inference)
-
-    Warum Quantisierung: Große Modelle passen oft nicht in GPU Memory.
-    4-bit Quantisierung reduziert Memory um ~75% bei minimalem Qualitätsverlust.
-    """
+    """Wrapper für Large Language Models."""
 
     def __init__(
         self,
@@ -45,7 +34,7 @@ class LLMModel(BaseModel):
         trust_remote_code: bool = False,
     ):
         """
-        Initialisiert das LLM.
+        Initialisiert das Large Language Model.
 
         Args:
             model_name: HuggingFace Modell-ID
@@ -92,7 +81,7 @@ class LLMModel(BaseModel):
 
         self.tokenizer.padding_side = "left"
 
-        # Lade Modell
+        # Lade das Modell
         model_kwargs = {
             "dtype": self.dtype,
             "device_map": "auto" if self.device == "cuda" else None,

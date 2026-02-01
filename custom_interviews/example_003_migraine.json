@@ -1,0 +1,59 @@
+{
+  "name": "Fall 003 - Migräne ohne Aura",
+  "expected_icd10": "G43.0",
+  "description": "Patient mit typischen Migräne-Symptomen",
+  "messages": [
+    {
+      "role": "doctor",
+      "message": "Guten Tag! Womit kann ich Ihnen helfen?"
+    },
+    {
+      "role": "patient",
+      "message": "Hallo Doktor. Ich leide unter sehr starken Kopfschmerzen, die immer wieder kommen."
+    },
+    {
+      "role": "doctor",
+      "message": "Können Sie die Kopfschmerzen genauer beschreiben?"
+    },
+    {
+      "role": "patient",
+      "message": "Der Schmerz ist meist auf einer Seite, meistens links. Es pocht und hämmert richtig."
+    },
+    {
+      "role": "doctor",
+      "message": "Wie lange dauern diese Kopfschmerzen an?"
+    },
+    {
+      "role": "patient",
+      "message": "Meistens den ganzen Tag, manchmal sogar zwei Tage. Sie sind so schlimm, dass ich nicht arbeiten kann."
+    },
+    {
+      "role": "doctor",
+      "message": "Haben Sie auch andere Symptome während dieser Kopfschmerzen?"
+    },
+    {
+      "role": "patient",
+      "message": "Ja, mir wird oft übel und ich muss mich manchmal übergeben. Licht und Lärm sind unerträglich."
+    },
+    {
+      "role": "doctor",
+      "message": "Wie oft treten diese Anfälle auf?"
+    },
+    {
+      "role": "patient",
+      "message": "Etwa zwei bis drei Mal im Monat. Es ist wirklich belastend."
+    },
+    {
+      "role": "doctor",
+      "message": "Sehen Sie vor den Kopfschmerzen Lichtblitze oder Zickzacklinien?"
+    },
+    {
+      "role": "patient",
+      "message": "Nein, die Kopfschmerzen kommen einfach so, ohne Vorwarnung."
+    },
+    {
+      "role": "doctor",
+      "message": "Das klingt nach Migräne ohne Aura. Die einseitigen pulsierenden Kopfschmerzen, die Übelkeit und die Licht- und Lärmempfindlichkeit sind typisch dafür."
+    }
+  ]
+}

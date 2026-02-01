@@ -9,7 +9,7 @@ from transformers import (
     TrainingArguments,
     AutoModelForCausalLM,
     AutoTokenizer,
-    EarlyStoppingCallback
+    EarlyStoppingCallback,
 )
 from peft import LoraConfig, get_peft_model, TaskType, PeftModel
 from datasets import Dataset
@@ -35,13 +35,14 @@ class FineTuner:
         Args:
             config: Experiment-Konfiguration
             model_name: Optional - Überschreibt config.model.slm_name
-                       Nützlich für Training mehrerer Modelle
         """
         self.config = config
-        self.model_name = model_name or getattr(config.model, 'slm_name', None)
+        self.model_name = model_name or getattr(config.model, "slm_name", None)
 
         if self.model_name is None:
-            raise ValueError("model_name must be provided either via parameter or config.model.slm_name")
+            raise ValueError(
+                "model_name must be provided either via parameter or config.model.slm_name"
+            )
 
         self.model = None
         self.tokenizer = None
@@ -54,100 +55,109 @@ class FineTuner:
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-        
+
         # Prepare model loading kwargs with optimizations
-        model_kwargs = {
-            "device_map": "auto"
-        }
-        
+        model_kwargs = {"device_map": "auto"}
+
         # Use BF16/FP16 based on config
         if self.config.training.bf16:
             model_kwargs["torch_dtype"] = torch.bfloat16
         elif self.config.training.fp16:
             model_kwargs["torch_dtype"] = torch.float16
-        
+
         # Add attention implementation if specified in config
-        if hasattr(self.config.model, 'attn_implementation'):
+        if hasattr(self.config.model, "attn_implementation"):
             attn_impl = self.config.model.attn_implementation
 
             # Graceful fallback for flash attention
             if attn_impl == "flash_attention_2":
                 try:
                     import flash_attn
+
                     model_kwargs["attn_implementation"] = attn_impl
-                    logger.info(f"✅ Using flash_attention_2 for 2-3x attention speedup")
+                    logger.info(
+                        f"✅ Using flash_attention_2 for 2-3x attention speedup"
+                    )
                 except ImportError:
-                    logger.warning("⚠️  flash_attn not installed, falling back to 'sdpa'")
-                    logger.warning("   Install with: pip install flash-attn --no-build-isolation")
+                    logger.warning(
+                        "⚠️  flash_attn not installed, falling back to 'sdpa'"
+                    )
+                    logger.warning(
+                        "   Install with: pip install flash-attn --no-build-isolation"
+                    )
                     model_kwargs["attn_implementation"] = "sdpa"
                     logger.info("✅ Using PyTorch SDPA for ~1.5x attention speedup")
             else:
                 model_kwargs["attn_implementation"] = attn_impl
                 logger.info(f"✅ Using {attn_impl} attention implementation")
-        
+
         # Load model with optimizations
         self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_name,
-            **model_kwargs
+            self.model_name, **model_kwargs
         )
-        
+
         # Aktiviere Gradient Checkpointing für Memory-Effizienz (if enabled)
         if self.config.training.gradient_checkpointing:
             self.model.gradient_checkpointing_enable()
             logger.info("⚠️  Gradient checkpointing enabled - slower but saves memory")
         else:
             logger.info("✅ Gradient checkpointing disabled - using full speed mode")
-        
+
         logger.info("Model and tokenizer loaded")
-    
+
     def setup_lora(self):
         """Konfiguriert LoRA für das Modell."""
         if not self.config.training.use_lora:
             logger.info("LoRA disabled, training full model")
             return
-        
+
         logger.info("Setting up LoRA...")
-        
+
         lora_config = LoraConfig(
             r=self.config.training.lora_r,
             lora_alpha=self.config.training.lora_alpha,
             lora_dropout=self.config.training.lora_dropout,
             target_modules=self.config.training.lora_target_modules,
             task_type=TaskType.CAUSAL_LM,
-            bias="none"
+            bias="none",
         )
-        
+
         self.model = get_peft_model(self.model, lora_config)
         self.model.print_trainable_parameters()
-        
-        # Apply torch.compile for graph optimization (RTX 5090 optimization)
-        if hasattr(self.config.training, 'torch_compile') and self.config.training.torch_compile:
+
+        # Übernehme torch.compile für Graphenoptimierung
+        if (
+            hasattr(self.config.training, "torch_compile")
+            and self.config.training.torch_compile
+        ):
             logger.info("✅ Applying torch.compile for 20-40% speedup...")
             try:
                 self.model = torch.compile(self.model)
                 logger.info("✅ torch.compile successfully applied!")
             except Exception as e:
-                logger.warning(f"⚠️  torch.compile failed: {e}. Continuing without compilation.")
-    
+                logger.warning(
+                    f"⚠️  torch.compile failed: {e}. Continuing without compilation."
+                )
+
     def train(
         self,
         train_dataset: Dataset,
         eval_dataset: Dataset,
-        output_dir: Optional[Path] = None
+        output_dir: Optional[Path] = None,
     ) -> Dict:
         """
-        Führt Training durch.
-        
+        Führt das Training durch.
+
         Returns:
             Dict mit Training-Metriken
         """
         if output_dir is None:
             output_dir = self.config.paths.finetuned_models_dir / "checkpoint"
-        
+
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Training Arguments
+
+        # Training Hyperparameter
         training_args = TrainingArguments(
             output_dir=str(output_dir),
             num_train_epochs=self.config.training.num_epochs,
@@ -175,9 +185,9 @@ class FineTuner:
             seed=self.config.training.seed,
             max_grad_norm=self.config.training.max_grad_norm,
         )
-        
+
         logger.info("✅ Using optimizer: {}".format(self.config.training.optimizer))
-        
+
         # Trainer
         self.trainer = Trainer(
             model=self.model,
@@ -185,30 +195,32 @@ class FineTuner:
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             tokenizer=self.tokenizer,
-            callbacks=[EarlyStoppingCallback(
-                early_stopping_patience=self.config.training.early_stopping_patience,
-                early_stopping_threshold=self.config.training.early_stopping_threshold
-            )]
+            callbacks=[
+                EarlyStoppingCallback(
+                    early_stopping_patience=self.config.training.early_stopping_patience,
+                    early_stopping_threshold=self.config.training.early_stopping_threshold,
+                )
+            ],
         )
-        
+
         # Start Training
         logger.info("Starting training...")
         train_result = self.trainer.train()
-        
+
         # Speichere finales Modell
         final_model_path = self.config.paths.finetuned_models_dir / "final_model"
         self.trainer.save_model(str(final_model_path))
         self.tokenizer.save_pretrained(str(final_model_path))
-        
+
         logger.info(f"Training completed. Model saved to {final_model_path}")
-        
+
         return train_result.metrics
-    
+
     def save_model(self, save_path: Path):
         """Speichert trainiertes Modell."""
         if self.model is None:
             raise ValueError("No model to save")
-        
+
         save_path.mkdir(parents=True, exist_ok=True)
         self.model.save_pretrained(str(save_path))
         self.tokenizer.save_pretrained(str(save_path))

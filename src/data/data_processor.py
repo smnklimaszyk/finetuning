@@ -8,13 +8,11 @@ Warum wichtig: Das richtige Datenformat ist entscheidend für effektives Trainin
 Verschiedene Modelle erwarten unterschiedliche Input-Formate (Chat-Templates, etc.).
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional
 from datasets import Dataset
 from transformers import PreTrainedTokenizer, AutoTokenizer
 import logging
 from pathlib import Path
-import json
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 

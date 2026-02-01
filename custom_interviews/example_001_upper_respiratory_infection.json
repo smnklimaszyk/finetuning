@@ -1,0 +1,51 @@
+{
+  "name": "Case 001 - Acute Upper Respiratory Infection",
+  "expected_icd10": "J06.9",
+  "description": "Patient with typical cold symptoms",
+  "messages": [
+    {
+      "role": "doctor",
+      "message": "Good morning! What can I do for you today?"
+    },
+    {
+      "role": "patient",
+      "message": "Hello doctor. I haven't been feeling well for three days. I have a sore throat and a stuffy nose."
+    },
+    {
+      "role": "doctor",
+      "message": "Do you also have a fever?"
+    },
+    {
+      "role": "patient",
+      "message": "Yes, last night I had a fever of 38.5 degrees. This morning it was a bit lower, around 37.8 degrees."
+    },
+    {
+      "role": "doctor",
+      "message": "Do you also have a cough?"
+    },
+    {
+      "role": "patient",
+      "message": "Yes, a little bit. It's a dry cough that gets worse especially at night."
+    },
+    {
+      "role": "doctor",
+      "message": "Do you have a headache or body aches?"
+    },
+    {
+      "role": "patient",
+      "message": "Yes, my whole body hurts, especially my head and muscles."
+    },
+    {
+      "role": "doctor",
+      "message": "Do you have a cold or a runny nose?"
+    },
+    {
+      "role": "patient",
+      "message": "Yes, my nose is running constantly and I have to sneeze often."
+    },
+    {
+      "role": "doctor",
+      "message": "Alright. That sounds lke a viral upper respiratory infection. I will prescribe you a painkiller and recommend plenty of rest and enough fluids."
+    }
+  ]
+}

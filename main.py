@@ -268,8 +268,6 @@ def train_and_evaluate_slm(
     return training_metrics, evaluation_metrics
 
 
-
-
 def compare_and_visualize(results, config):
     """Schritt 6: Vergleiche Ergebnisse und erstelle Visualisierungen."""
     logger.info("=" * 60)
@@ -334,13 +332,13 @@ def main():
     # Handle force recompute flag
     if args.force_recompute:
         config.evaluation.force_recompute = True
-        logger.info("🔄 Force recompute enabled - will regenerate all predictions")
+        logger.info("Force recompute enabled - will regenerate all predictions")
 
     # Handle cache clearing
     if args.clear_cache:
         from utils import clear_prediction_cache
 
-        logger.info("🗑️  Clearing prediction cache...")
+        logger.info("Clearing prediction cache...")
         clear_prediction_cache(config.paths.predictions_cache_dir)
 
     # Setup
@@ -393,7 +391,10 @@ def main():
 
     # Step 3: Train and Evaluate SLMs (Small, Finetuned Models)
     if args.experiment in ["training", "full"]:
-        if config.experiment.run_slm_finetuning and config.experiment.run_slm_evaluation:
+        if (
+            config.experiment.run_slm_finetuning
+            and config.experiment.run_slm_evaluation
+        ):
             logger.info("\n" + "=" * 60)
             logger.info("PHASE 2: Training and Evaluating Small Language Models")
             logger.info("=" * 60)
@@ -420,7 +421,9 @@ def main():
                         results[result_key]["training_status"] = "finetuned"
                         results[result_key]["training_metrics"] = train_metrics
                     else:
-                        logger.info(f"Skipping training for {model_short_name} (--skip-training)")
+                        logger.info(
+                            f"Skipping training for {model_short_name} (--skip-training)"
+                        )
 
                 except Exception as e:
                     logger.error(f"Error with SLM ({slm_config.name}): {e}")

@@ -217,6 +217,22 @@ evaluation.eval_batch_size = 16
 
 ---
 
+## Testing Custom Interviews
+
+After training, test your models on custom cases:
+
+```bash
+# Test on your own doctor-patient conversations
+python test_custom_interviews.py
+
+# Create custom test cases in JSON format
+# See custom_interviews/ for examples
+```
+
+See [CUSTOM_INTERVIEW_TESTING.md](CUSTOM_INTERVIEW_TESTING.md) for details.
+
+---
+
 **Ready to start? Run:**
 ```bash
 export PYTORCH_ALLOC_CONF=expandable_segments:True
