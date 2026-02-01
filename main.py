@@ -108,7 +108,11 @@ def load_and_prepare_data(config):
     )
 
     # Initialisiere Processor
-    tokenizer = AutoTokenizer.from_pretrained(config.model.slm_name)
+    # Use first SLM model for tokenization (all SLMs should have compatible tokenizers)
+    first_slm = config.model.slm_models[0]
+    logger.info(f"Using tokenizer from: {first_slm.name}")
+
+    tokenizer = AutoTokenizer.from_pretrained(first_slm.name)
     processor = MedicalDialogProcessor(
         tokenizer=tokenizer,
         max_length=config.data.max_sequence_length,
