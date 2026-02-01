@@ -103,7 +103,13 @@ class LLMModel(BaseModel):
             model_kwargs["quantization_config"] = quantization_config
 
         if self.use_flash_attention:
-            model_kwargs["attn_implementation"] = "flash_attention_2"
+            try:
+                import flash_attn
+                model_kwargs["attn_implementation"] = "flash_attention_2"
+                logger.info("Using flash_attention_2 for attention")
+            except ImportError:
+                logger.warning("flash_attn not installed, using default attention")
+                # PyTorch will use SDPA by default if available
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name, **model_kwargs

@@ -245,10 +245,11 @@ class ModelConfig(BaseModel):
     )
     slm_load_in_4bit: bool = False  # DISABLED - 32GB VRAM is sufficient for native BF16
 
-    # Attention Implementation (CRITICAL for 2-3x speedup)
-    attn_implementation: str = (
-        "flash_attention_2"  # Use Flash Attention 2 (or 3 if available)
-    )
+    # Attention Implementation (Optional optimization)
+    # Options: "flash_attention_2", "sdpa" (PyTorch scaled dot product), "eager" (standard)
+    # Note: flash_attention_2 requires separate installation and is hard to compile
+    # SDPA (PyTorch native) gives ~1.5x speedup with no extra dependencies
+    attn_implementation: str = "sdpa"  # Use PyTorch SDPA (compatible, fast, no extra deps)
 
     # Tokenizer Settings
     # Wichtig: "left" für Decoder-Only Modelle bei Batched Generation!

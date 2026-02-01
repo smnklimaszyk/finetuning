@@ -66,10 +66,24 @@ class FineTuner:
         elif self.config.training.fp16:
             model_kwargs["torch_dtype"] = torch.float16
         
-        # Add Flash Attention 2 if specified in config (RTX 5090 optimization)
+        # Add attention implementation if specified in config
         if hasattr(self.config.model, 'attn_implementation'):
-            model_kwargs["attn_implementation"] = self.config.model.attn_implementation
-            logger.info(f"✅ Using {self.config.model.attn_implementation} for 2-3x attention speedup")
+            attn_impl = self.config.model.attn_implementation
+
+            # Graceful fallback for flash attention
+            if attn_impl == "flash_attention_2":
+                try:
+                    import flash_attn
+                    model_kwargs["attn_implementation"] = attn_impl
+                    logger.info(f"✅ Using flash_attention_2 for 2-3x attention speedup")
+                except ImportError:
+                    logger.warning("⚠️  flash_attn not installed, falling back to 'sdpa'")
+                    logger.warning("   Install with: pip install flash-attn --no-build-isolation")
+                    model_kwargs["attn_implementation"] = "sdpa"
+                    logger.info("✅ Using PyTorch SDPA for ~1.5x attention speedup")
+            else:
+                model_kwargs["attn_implementation"] = attn_impl
+                logger.info(f"✅ Using {attn_impl} attention implementation")
         
         # Load model with optimizations
         self.model = AutoModelForCausalLM.from_pretrained(
