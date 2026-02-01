@@ -49,6 +49,16 @@ def parse_args():
         help="Skip training and use existing model",
     )
     parser.add_argument(
+        "--force-recompute",
+        action="store_true",
+        help="Force recompute predictions (ignore cache)",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear prediction cache before running",
+    )
+    parser.add_argument(
         "--model-llm", type=str, default=None, help="Override LLM model name"
     )
     parser.add_argument(
@@ -155,6 +165,7 @@ def evaluate_baseline_llm(config, test_dataset, processor, llm_config=None):
         test_dataset=test_dataset,
         processor=processor,
         batch_size=config.evaluation.eval_batch_size,
+        config=config,  # Pass config for caching
     )
 
     llm.unload()
@@ -183,6 +194,7 @@ def evaluate_baseline_slm(config, test_dataset, processor):
         test_dataset=test_dataset,
         processor=processor,
         batch_size=config.evaluation.eval_batch_size,
+        config=config,  # Pass config for caching
     )
 
     slm.unload()
@@ -234,6 +246,7 @@ def evaluate_finetuned_slm(config, test_dataset, processor):
         test_dataset=test_dataset,
         processor=processor,
         batch_size=config.evaluation.eval_batch_size,
+        config=config,  # Pass config for caching
     )
 
     slm.unload()
@@ -290,6 +303,17 @@ def main():
         config.model.baseline_llms = [LLMModelConfig(name=args.model_llm, description="CLI Override")]
     if args.model_slm:
         config.model.slm_name = args.model_slm
+    
+    # Handle force recompute flag
+    if args.force_recompute:
+        config.evaluation.force_recompute = True
+        logger.info("🔄 Force recompute enabled - will regenerate all predictions")
+    
+    # Handle cache clearing
+    if args.clear_cache:
+        from utils import clear_prediction_cache
+        logger.info("🗑️  Clearing prediction cache...")
+        clear_prediction_cache(config.paths.predictions_cache_dir)
 
     # Setup
     config.setup()
@@ -298,6 +322,7 @@ def main():
     logger.info("Starting Medical Diagnosis Model Pipeline")
     logger.info(f"Experiment: {args.experiment}")
     logger.info(f"Device: {get_device()}")
+    logger.info(f"Prediction Cache: {'Enabled' if config.evaluation.use_prediction_cache else 'Disabled'}")
 
     # Step 1: Load Data
     train_dataset, val_dataset, test_dataset, processor = load_and_prepare_data(config)

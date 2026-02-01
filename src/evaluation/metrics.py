@@ -129,23 +129,29 @@ def evaluate_model(
     model,
     test_dataset,
     processor,
-    batch_size: int = 8
+    batch_size: int = 8,
+    config = None
 ) -> Dict:
     """
-    Evaluiert ein Modell auf Test-Datensatz.
+    Evaluiert ein Modell auf Test-Datensatz mit Smart Caching.
     
     Args:
         model: Modell-Wrapper (LLMModel oder SLMModel)
         test_dataset: Test-Datensatz
         processor: Data Processor für Formatierung
         batch_size: Batch-Größe
+        config: Optional - Config für Caching-Einstellungen
     
     Returns:
         Dict mit Metriken
     """
-    logger.info("Starting model evaluation...")
+    from utils import (
+        generate_cache_key, 
+        get_cached_predictions, 
+        save_predictions_cache
+    )
     
-    evaluator = MedicalDiagnosisEvaluator()
+    logger.info("Starting model evaluation...")
     
     # Finde Feld-Namen (MedSynth hat: 'Dialogue', 'ICD10', 'ICD10_desc', ' Note')
     text_field = None
@@ -162,9 +168,39 @@ def evaluate_model(
     if not text_field or not label_field:
         raise ValueError(f"Could not find required fields in dataset")
     
-    # Prepare inputs
+    # Prepare inputs and references
     conversations = [sample[text_field] for sample in test_dataset]
     references = [sample[label_field] for sample in test_dataset]
+    
+    # === SMART CACHING SYSTEM ===
+    use_cache = config and hasattr(config.evaluation, 'use_prediction_cache') and config.evaluation.use_prediction_cache
+    force_recompute = config and hasattr(config.evaluation, 'force_recompute') and config.evaluation.force_recompute
+    
+    if use_cache and not force_recompute:
+        # Generate cache key
+        model_name = getattr(model, 'model_name', 'unknown_model')
+        generation_config = {
+            'max_new_tokens': 50,
+            'temperature': 0.1,
+            'do_sample': False,
+            'batch_size': batch_size
+        }
+        cache_key = generate_cache_key(model_name, len(test_dataset), generation_config)
+        
+        # Try to load from cache
+        cache_dir = config.paths.predictions_cache_dir
+        max_age = config.evaluation.cache_max_age_days if hasattr(config.evaluation, 'cache_max_age_days') else None
+        cached_data = get_cached_predictions(cache_key, cache_dir, max_age)
+        
+        if cached_data:
+            logger.info(f"✅ Loaded predictions from cache: {cache_key}")
+            logger.info(f"   Cached at: {cached_data['metadata'].get('timestamp', 'unknown')}")
+            logger.info(f"   Predictions: {len(cached_data['predictions'])}")
+            return cached_data['metrics']
+        else:
+            logger.info(f"🔄 No valid cache found - generating predictions...")
+    elif force_recompute:
+        logger.info(f"🔄 Force recompute enabled - ignoring cache...")
     
     # Format for inference
     formatted_inputs = [
@@ -173,6 +209,9 @@ def evaluate_model(
     ]
     
     # Generate predictions
+    import time
+    start_time = time.time()
+    
     predictions_raw = model.predict_batch(
         formatted_inputs,
         batch_size=batch_size,
@@ -181,10 +220,13 @@ def evaluate_model(
         do_sample=False  # Greedy decoding für Evaluation
     )
     
+    eval_time = time.time() - start_time
+    
     # Extract ICD codes
     predictions = [model.extract_icd_code(pred) for pred in predictions_raw]
     
     # Compute metrics
+    evaluator = MedicalDiagnosisEvaluator()
     evaluator.add_batch(predictions, references)
     metrics = evaluator.compute_all_metrics()
     
@@ -192,5 +234,33 @@ def evaluate_model(
     if hasattr(model, 'metrics'):
         performance_metrics = model.metrics.get_metrics()
         metrics.update({'performance': performance_metrics})
+    
+    # === SAVE TO CACHE ===
+    if use_cache and config:
+        model_name = getattr(model, 'model_name', 'unknown_model')
+        generation_config = {
+            'max_new_tokens': 50,
+            'temperature': 0.1,
+            'do_sample': False,
+            'batch_size': batch_size
+        }
+        cache_key = generate_cache_key(model_name, len(test_dataset), generation_config)
+        
+        metadata = {
+            'model_name': model_name,
+            'dataset_size': len(test_dataset),
+            'generation_config': generation_config,
+            'evaluation_time_seconds': eval_time
+        }
+        
+        cache_file = save_predictions_cache(
+            cache_key,
+            config.paths.predictions_cache_dir,
+            predictions,
+            references,
+            metrics,
+            metadata
+        )
+        logger.info(f"💾 Predictions cached to: {cache_file.name}")
     
     return metrics
