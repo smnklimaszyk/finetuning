@@ -108,7 +108,14 @@ class BaseModel(ABC):
         pass
 
     def unload(self) -> None:
-        """Entlädt Modell aus dem Memory."""
+        """
+        Entlädt Modell aus dem Memory mit aggressiver Cleanup-Strategie.
+
+        Warum wichtig: Bei sequentiellem Laden mehrerer großer Modelle
+        kann Memory-Fragmentierung zu OOM-Fehlern führen, selbst wenn
+        genug VRAM vorhanden ist. Diese Methode stellt sicher, dass
+        wirklich ALLES freigegeben wird.
+        """
         if self.model is not None:
             del self.model
             self.model = None
@@ -117,12 +124,18 @@ class BaseModel(ABC):
             del self.tokenizer
             self.tokenizer = None
 
-        # Clean up CUDA Cache
+        # Aggressive CUDA cleanup für sequentielles Laden mehrerer Modelle
         if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+            torch.cuda.empty_cache()      # Gibt cached memory frei
+            torch.cuda.synchronize()      # Wartet auf alle CUDA operations
+            torch.cuda.ipc_collect()      # Sammelt inter-process memory
+
+        # Force Python garbage collection
+        import gc
+        gc.collect()
 
         self.is_loaded = False
-        logger.info(f"Model {self.model_name} unloaded")
+        logger.info(f"Model {self.model_name} unloaded and memory cleaned")
 
     def get_model_info(self) -> Dict:
         """

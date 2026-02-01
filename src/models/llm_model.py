@@ -86,7 +86,7 @@ class LLMModel(BaseModel):
         # Wichtig: Für Decoder-Only Modelle muss padding links sein!
         # Sonst gibt es Probleme bei der Generierung mit gepadten Batches
         self.tokenizer.padding_side = "left"
-        
+
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -145,16 +145,17 @@ class LLMModel(BaseModel):
             "pad_token_id": self.tokenizer.pad_token_id,
             "eos_token_id": self.tokenizer.eos_token_id,
         }
-        
+
         sampling_params = {"temperature", "top_p", "top_k"}
         if do_sample:
             gen_kwargs["temperature"] = temperature
             gen_kwargs["top_p"] = top_p
             gen_kwargs["top_k"] = top_k
-        
+
         # Filtere Sampling-Parameter aus generation_kwargs wenn do_sample=False
         filtered_kwargs = {
-            k: v for k, v in generation_kwargs.items()
+            k: v
+            for k, v in generation_kwargs.items()
             if do_sample or k not in sampling_params
         }
         gen_kwargs.update(filtered_kwargs)

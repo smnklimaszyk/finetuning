@@ -27,7 +27,13 @@ from data import create_data_loader, MedicalDialogProcessor, split_dataset
 from models import LLMModel, SLMModel
 from training import FineTuner
 from evaluation import evaluate_model, plot_model_comparison, create_results_report
-from utils import setup_logging, get_device, save_json
+from utils import (
+    setup_logging,
+    get_device,
+    save_json,
+    log_gpu_memory,
+    aggressive_memory_cleanup,
+)
 from transformers import AutoTokenizer
 
 logger = logging.getLogger(__name__)
@@ -128,28 +134,28 @@ def load_and_prepare_data(config):
     return train_dataset, val_dataset, test_dataset, processor
 
 
-def evaluate_baseline_llm(config, test_dataset, processor, llm_config=None):
+def evaluate_llm(config, test_dataset, processor, llm_config):
     """
-    Schritt 2: Evaluiere Baseline LLM.
-    
+    Evaluiert ein großes LLM (zero-shot, ohne Finetuning).
+
     Args:
         config: Experiment-Konfiguration
         test_dataset: Test-Datensatz für Evaluation
         processor: Datenverarbeitungs-Pipeline
-        llm_config: Optional - LLMModelConfig mit Modelleinstellungen
-    
+        llm_config: ModelInstanceConfig mit Modelleinstellungen
+
     Returns:
         Dictionary mit Evaluationsmetriken
     """
-    # Fallback auf erstes konfiguriertes LLM wenn keine Config übergeben
-    if llm_config is None:
-        llm_config = config.model.baseline_llms[0]
-    
     model_short_name = llm_config.name.split("/")[-1]
-    
+
     logger.info("=" * 60)
-    logger.info(f"STEP 2: Evaluating Baseline LLM: {model_short_name}")
+    logger.info(f"Evaluating LLM (untrained): {model_short_name} ({llm_config.size})")
+    logger.info(f"Description: {llm_config.description}")
     logger.info("=" * 60)
+
+    # Log memory before loading
+    log_gpu_memory("Before LLM load")
 
     llm = LLMModel(
         model_name=llm_config.name,
@@ -159,100 +165,114 @@ def evaluate_baseline_llm(config, test_dataset, processor, llm_config=None):
     )
 
     llm.load()
+    log_gpu_memory("After LLM load")
 
     metrics = evaluate_model(
         model=llm,
         test_dataset=test_dataset,
         processor=processor,
         batch_size=config.evaluation.eval_batch_size,
-        config=config,  # Pass config for caching
+        config=config,
     )
 
     llm.unload()
+    log_gpu_memory("After LLM unload")
 
-    logger.info(f"Baseline LLM ({model_short_name}) Results: {metrics}")
+    logger.info(f"LLM ({model_short_name}) Results: {metrics}")
     return metrics
 
 
-def evaluate_baseline_slm(config, test_dataset, processor):
-    """Schritt 3: Evaluiere Baseline SLM (ohne Finetuning)."""
+def train_and_evaluate_slm(
+    config, train_dataset, val_dataset, test_dataset, processor, slm_config
+):
+    """
+    Trainiert und evaluiert ein kleines SLM.
+
+    Args:
+        config: Experiment-Konfiguration
+        train_dataset: Training-Datensatz
+        val_dataset: Validation-Datensatz
+        test_dataset: Test-Datensatz
+        processor: Datenverarbeitungs-Pipeline
+        slm_config: ModelInstanceConfig mit Modelleinstellungen
+
+    Returns:
+        Tuple von (training_metrics, evaluation_metrics)
+    """
+    model_short_name = slm_config.name.split("/")[-1]
+
     logger.info("=" * 60)
-    logger.info("STEP 3: Evaluating Baseline SLM")
-    logger.info("=" * 60)
-
-    slm = SLMModel(
-        model_name=config.model.slm_name,
-        device=get_device(),
-        load_in_4bit=config.model.slm_load_in_4bit,
-        is_finetuned=False,
-    )
-
-    slm.load()
-
-    metrics = evaluate_model(
-        model=slm,
-        test_dataset=test_dataset,
-        processor=processor,
-        batch_size=config.evaluation.eval_batch_size,
-        config=config,  # Pass config for caching
-    )
-
-    slm.unload()
-
-    logger.info(f"Baseline SLM Results: {metrics}")
-    return metrics
-
-
-def train_slm(config, train_dataset, val_dataset):
-    """Schritt 4: Trainiere SLM mit LoRA."""
-    logger.info("=" * 60)
-    logger.info("STEP 4: Training SLM with LoRA")
+    logger.info(f"Training SLM: {model_short_name} ({slm_config.size})")
+    logger.info(f"Description: {slm_config.description}")
     logger.info("=" * 60)
 
+    # Log memory before training
+    log_gpu_memory("Before SLM training")
+
+    # Erstelle modell-spezifisches Output-Verzeichnis
+    model_output_dir = config.paths.finetuned_models_dir / model_short_name
+    model_output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Temporär: Update config.model.slm_name für Trainer
+    # (Trainer nutzt noch config.model.slm_name)
+    original_slm_name = getattr(config.model, "slm_name", None)
+    config.model.slm_name = slm_config.name
+
+    # Training
     trainer = FineTuner(config)
     trainer.setup_model_and_tokenizer()
     trainer.setup_lora()
 
-    metrics = trainer.train(
+    training_metrics = trainer.train(
         train_dataset=train_dataset,
         eval_dataset=val_dataset,
-        output_dir=config.paths.finetuned_models_dir / "training",
+        output_dir=model_output_dir / "training",
     )
 
-    logger.info(f"Training complete! Metrics: {metrics}")
-    return metrics
+    logger.info(f"Training complete for {model_short_name}!")
 
+    # Restore original config
+    if original_slm_name:
+        config.model.slm_name = original_slm_name
 
-def evaluate_finetuned_slm(config, test_dataset, processor):
-    """Schritt 5: Evaluiere finetuned SLM."""
+    # Cleanup nach Training
+    del trainer
+    aggressive_memory_cleanup()
+    log_gpu_memory("After SLM training cleanup")
+
+    # Evaluation
     logger.info("=" * 60)
-    logger.info("STEP 5: Evaluating Finetuned SLM")
+    logger.info(f"Evaluating finetuned SLM: {model_short_name}")
     logger.info("=" * 60)
 
-    # Lade finetuned model
-    model_path = config.paths.finetuned_models_dir / "final_model"
+    model_path = model_output_dir / "final_model"
 
     slm = SLMModel(
         model_name=str(model_path),
         device=get_device(),
-        load_in_4bit=False,  # Finetuned model already optimized
+        load_in_4bit=False,
         is_finetuned=True,
     )
 
     slm.load()
+    log_gpu_memory("After SLM load for evaluation")
 
-    metrics = evaluate_model(
+    evaluation_metrics = evaluate_model(
         model=slm,
         test_dataset=test_dataset,
         processor=processor,
         batch_size=config.evaluation.eval_batch_size,
-        config=config,  # Pass config for caching
+        config=config,
     )
 
     slm.unload()
+    log_gpu_memory("After SLM evaluation")
 
-    logger.info(f"Finetuned SLM Results: {metrics}")
-    return metrics
+    logger.info(f"Finetuned SLM ({model_short_name}) Results: {evaluation_metrics}")
+
+    return training_metrics, evaluation_metrics
+
+
 
 
 def compare_and_visualize(results, config):
@@ -299,19 +319,32 @@ def main():
     # Override mit CLI args
     if args.model_llm:
         # CLI Override: Ersetze alle LLMs mit dem angegebenen Modell
-        from config.base_config import LLMModelConfig
-        config.model.baseline_llms = [LLMModelConfig(name=args.model_llm, description="CLI Override")]
+        from config.base_config import ModelInstanceConfig
+
+        config.model.llm_models = [
+            ModelInstanceConfig(
+                name=args.model_llm, size="unknown", description="CLI Override"
+            )
+        ]
     if args.model_slm:
-        config.model.slm_name = args.model_slm
-    
+        # CLI Override: Ersetze alle SLMs mit dem angegebenen Modell
+        from config.base_config import ModelInstanceConfig
+
+        config.model.slm_models = [
+            ModelInstanceConfig(
+                name=args.model_slm, size="unknown", description="CLI Override"
+            )
+        ]
+
     # Handle force recompute flag
     if args.force_recompute:
         config.evaluation.force_recompute = True
         logger.info("🔄 Force recompute enabled - will regenerate all predictions")
-    
+
     # Handle cache clearing
     if args.clear_cache:
         from utils import clear_prediction_cache
+
         logger.info("🗑️  Clearing prediction cache...")
         clear_prediction_cache(config.paths.predictions_cache_dir)
 
@@ -322,54 +355,87 @@ def main():
     logger.info("Starting Medical Diagnosis Model Pipeline")
     logger.info(f"Experiment: {args.experiment}")
     logger.info(f"Device: {get_device()}")
-    logger.info(f"Prediction Cache: {'Enabled' if config.evaluation.use_prediction_cache else 'Disabled'}")
+    logger.info(
+        f"Prediction Cache: {'Enabled' if config.evaluation.use_prediction_cache else 'Disabled'}"
+    )
 
     # Step 1: Load Data
     train_dataset, val_dataset, test_dataset, processor = load_and_prepare_data(config)
 
     results = {}
 
-    # Step 2-3: Baseline Evaluation
+    # === NEW PIPELINE ===
+    # Step 2: Evaluate LLMs (Large, Untrained Models)
     if args.experiment in ["baseline", "full"]:
-        # Evaluiere alle konfigurierten Baseline LLMs
-        if config.experiment.run_baseline_llm:
-            for llm_config in config.model.baseline_llms:
+        if config.experiment.run_llm_evaluation:
+            logger.info("\n" + "=" * 60)
+            logger.info("PHASE 1: Evaluating Large Language Models (Zero-Shot)")
+            logger.info("=" * 60)
+
+            for llm_config in config.model.llm_models:
                 model_short_name = llm_config.name.split("/")[-1]
-                result_key = f"Baseline_LLM_{model_short_name}"
+                result_key = f"LLM_{model_short_name}_untrained"
+
                 try:
-                    logger.info(f"\n>>> Evaluating LLM: {llm_config.name}")
-                    logger.info(f"    Description: {llm_config.description}")
-                    results[result_key] = evaluate_baseline_llm(
-                        config, test_dataset, processor, llm_config=llm_config
+                    results[result_key] = evaluate_llm(
+                        config, test_dataset, processor, llm_config
                     )
+
+                    # Add metadata to results
+                    results[result_key]["model_type"] = "LLM"
+                    results[result_key]["model_size"] = llm_config.size
+                    results[result_key]["training_status"] = "untrained"
+
                 except Exception as e:
-                    logger.error(f"Error evaluating Baseline LLM ({llm_config.name}): {e}")
-                    # Versuche mit dem nächsten Modell fortzufahren
-                    continue
+                    logger.error(f"Error evaluating LLM ({llm_config.name}): {e}")
+                    import traceback
 
-        if config.experiment.run_baseline_slm:
-            try:
-                results["Baseline_SLM"] = evaluate_baseline_slm(
-                    config, test_dataset, processor
-                )
-            except Exception as e:
-                logger.error(f"Error evaluating Baseline SLM: {e}")
+                    logger.error(traceback.format_exc())
 
-    # Step 4-5: Training and Finetuned Evaluation
+                finally:
+                    # Aggressive cleanup between models
+                    aggressive_memory_cleanup()
+
+    # Step 3: Train and Evaluate SLMs (Small, Finetuned Models)
     if args.experiment in ["training", "full"]:
-        if not args.skip_training and config.experiment.run_finetuned_slm:
-            try:
-                train_metrics = train_slm(config, train_dataset, val_dataset)
-            except Exception as e:
-                logger.error(f"Error during training: {e}")
+        if config.experiment.run_slm_finetuning and config.experiment.run_slm_evaluation:
+            logger.info("\n" + "=" * 60)
+            logger.info("PHASE 2: Training and Evaluating Small Language Models")
+            logger.info("=" * 60)
 
-        if config.experiment.run_finetuned_slm:
-            try:
-                results["Finetuned_SLM"] = evaluate_finetuned_slm(
-                    config, test_dataset, processor
-                )
-            except Exception as e:
-                logger.error(f"Error evaluating Finetuned SLM: {e}")
+            for slm_config in config.model.slm_models:
+                model_short_name = slm_config.name.split("/")[-1]
+                result_key = f"SLM_{model_short_name}_finetuned"
+
+                try:
+                    if not args.skip_training:
+                        train_metrics, eval_metrics = train_and_evaluate_slm(
+                            config,
+                            train_dataset,
+                            val_dataset,
+                            test_dataset,
+                            processor,
+                            slm_config,
+                        )
+
+                        # Store results
+                        results[result_key] = eval_metrics
+                        results[result_key]["model_type"] = "SLM"
+                        results[result_key]["model_size"] = slm_config.size
+                        results[result_key]["training_status"] = "finetuned"
+                        results[result_key]["training_metrics"] = train_metrics
+                    else:
+                        logger.info(f"Skipping training for {model_short_name} (--skip-training)")
+
+                except Exception as e:
+                    logger.error(f"Error with SLM ({slm_config.name}): {e}")
+                    import traceback
+
+                    logger.error(traceback.format_exc())
+
+                finally:
+                    # Aggressive cleanup between models
+                    aggressive_memory_cleanup()
 
     # Step 6: Compare and Visualize
     if results:

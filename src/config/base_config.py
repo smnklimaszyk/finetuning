@@ -81,7 +81,7 @@ class PathConfig(BaseModel):
         / "outputs"
         / "reports"
     )
-    
+
     # Prediction Cache Directory
     predictions_cache_dir: Path = Field(
         default_factory=lambda: Path(__file__).parent.parent.parent
@@ -163,14 +163,16 @@ class DataConfig(BaseModel):
         return v
 
 
-class LLMModelConfig(BaseModel):
+class ModelInstanceConfig(BaseModel):
     """
-    Konfiguration für ein einzelnes LLM.
-    
-    Ermöglicht die Definition mehrerer LLMs mit individuellen Einstellungen
-    für den Modellvergleich.
+    Konfiguration für eine einzelne Modell-Instanz.
+
+    Diese Klasse wird sowohl für LLMs (große, untrainierte Modelle)
+    als auch für SLMs (kleine, zu finetuneende Modelle) verwendet.
     """
+
     name: str  # HuggingFace Modellname
+    size: str  # Modellgröße (z.B. "3B", "7B", "8B")
     description: str = ""  # Kurze Beschreibung des Modells
     load_in_4bit: bool = True  # Quantisierung für weniger Memory
     load_in_8bit: bool = False  # Alternative Quantisierung
@@ -181,42 +183,72 @@ class ModelConfig(BaseModel):
     """
     Konfiguration für Modellarchitektur und -parameter.
 
-    Warum wichtig: Zentrale Definition aller Modell-Hyperparameter
-    ermöglicht einfaches Experiment-Tracking und Reproduzierbarkeit.
+    Neue Struktur (Research-optimiert):
+    - LLMs: Große Modelle (7-8B) für zero-shot Vergleich
+    - SLMs: Kleine Modelle (3B) die wir finetunen werden
+
+    Research Question: Kann Spezialisierung (Finetuning) Größe schlagen?
     """
 
-    # Baseline LLMs (Liste von Modellen für Vergleichsevaluation)
-    # Jedes Modell hat seine eigene Konfiguration für Flexibilität
-    baseline_llms: List[LLMModelConfig] = Field(
+    # === LLMs: Large Language Models (Untrained Reference) ===
+    # Diese Modelle werden NICHT finetuned, sondern nur zero-shot evaluiert
+    # Sie repräsentieren die "Größe ohne Spezialisierung" Baseline
+    llm_models: List[ModelInstanceConfig] = Field(
         default=[
-            LLMModelConfig(
-                name="Qwen/Qwen2.5-3B-Instruct",
-                description="3B Parameter - kompaktes aber leistungsstarkes Modell",
+            ModelInstanceConfig(
+                name="meta-llama/Meta-Llama-3.1-8B-Instruct",
+                size="8B",
+                description="8B - Large reference model",
                 load_in_4bit=True,
             ),
-            LLMModelConfig(
-                name="meta-llama/Llama-3.2-3B-Instruct",
-                description="3B Parameter - Meta's neuestes kompaktes Llama Modell",
-                load_in_4bit=True,
-            ),
-            LLMModelConfig(
+            ModelInstanceConfig(
                 name="mistralai/Mistral-7B-Instruct-v0.3",
-                description="7B Parameter - größere Referenz für Vergleich",
+                size="7B",
+                description="7B - Medium reference model",
                 load_in_4bit=True,
             ),
         ],
-        description="Liste der Baseline-LLMs mit individuellen Konfigurationen"
+        description="Große untrainierte Modelle für zero-shot Vergleich",
     )
 
-    # Small Language Model (für Finetuning) - Expert-Optimized for RTX 5090
-    slm_name: str = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+    # === SLMs: Small Language Models (Finetuning Targets) ===
+    # Diese Modelle werden finetuned auf medizinische ICD-10 Daten
+    # Sie repräsentieren die "Spezialisierung trotz kleinerer Größe" Ansatz
+    slm_models: List[ModelInstanceConfig] = Field(
+        default=[
+            ModelInstanceConfig(
+                name="meta-llama/Llama-3.2-3B-Instruct",
+                size="3B",
+                description="3B - Compact Llama for finetuning",
+                load_in_4bit=False,  # Full precision for finetuning
+                dtype="bfloat16",
+            ),
+            ModelInstanceConfig(
+                name="Qwen/Qwen2.5-3B-Instruct",
+                size="3B",
+                description="3B - Compact Qwen for finetuning",
+                load_in_4bit=False,  # Full precision for finetuning
+                dtype="bfloat16",
+            ),
+        ],
+        description="Kleine Modelle die wir finetunen werden",
+    )
+
+    # === Shared Training Settings (for all SLMs) ===
+    # Diese Settings gelten für alle SLM-Finetuning Läufe
     slm_device: str = "cuda"
-    slm_dtype: str = "bfloat16"  # Native BF16 for maximum speed on Blackwell/Ada Lovelace
-    slm_load_in_8bit: bool = False  # DISABLED - Dequantization overhead hurts throughput
+    slm_dtype: str = (
+        "bfloat16"  # Native BF16 for maximum speed on Blackwell/Ada Lovelace
+    )
+    slm_load_in_8bit: bool = (
+        False  # DISABLED - Dequantization overhead hurts throughput
+    )
     slm_load_in_4bit: bool = False  # DISABLED - 32GB VRAM is sufficient for native BF16
-    
+
     # Attention Implementation (CRITICAL for 2-3x speedup)
-    attn_implementation: str = "flash_attention_2"  # Use Flash Attention 2 (or 3 if available)
+    attn_implementation: str = (
+        "flash_attention_2"  # Use Flash Attention 2 (or 3 if available)
+    )
 
     # Tokenizer Settings
     # Wichtig: "left" für Decoder-Only Modelle bei Batched Generation!
@@ -244,14 +276,18 @@ class TrainingConfig(BaseModel):
 
     # Training Hyperparameters (Expert-Tuned for RTX 5090 Maximum Throughput)
     num_epochs: int = 3  # Anzahl kompletter Durchläufe durch den Datensatz
-    learning_rate: float = 2e-4  # Höher für LoRA (10x standard) - LoRA verträgt höhere LR
+    learning_rate: float = (
+        2e-4  # Höher für LoRA (10x standard) - LoRA verträgt höhere LR
+    )
     warmup_steps: int = (
-        100  # Aggressive warmup with high LR - monitor for stability
-    )  # FALLBACK: Increase to 200 if training unstable
+        100  # Aggressive warmup with high LR - monitor for stability  # FALLBACK: Increase to 200 if training unstable
+    )
     weight_decay: float = 0.01  # L2-Regularisierung (verhindert Overfitting)
 
     # Optimizer Settings (Fused for 10-15% speedup)
-    optimizer: str = "adamw_torch_fused"  # Fused AdamW = faster gradient updates than standard
+    optimizer: str = (
+        "adamw_torch_fused"  # Fused AdamW = faster gradient updates than standard
+    )
     adam_beta1: float = 0.9  # Momentum für ersten Moment
     adam_beta2: float = 0.999  # Momentum für zweiten Moment
     adam_epsilon: float = 1e-8  # Numerische Stabilität
@@ -261,9 +297,15 @@ class TrainingConfig(BaseModel):
     num_warmup_steps: int = 500
 
     # Batch Sizes und Gradient Accumulation (Expert-Maximized for RTX 5090 - 32GB VRAM)
-    per_device_train_batch_size: int = 32  # DOUBLED - Native BF16 + No checkpointing = room for bigger batches
-    per_device_eval_batch_size: int = 64   # MASSIVE eval throughput (no gradients = more memory)
-    gradient_accumulation_steps: int = 1   # MINIMIZED - Eliminates sync overhead (Effective batch = 32)
+    per_device_train_batch_size: int = (
+        32  # DOUBLED - Native BF16 + No checkpointing = room for bigger batches
+    )
+    per_device_eval_batch_size: int = (
+        64  # MASSIVE eval throughput (no gradients = more memory)
+    )
+    gradient_accumulation_steps: int = (
+        1  # MINIMIZED - Eliminates sync overhead (Effective batch = 32)
+    )
     # Effektive Batch Size = per_device_train_batch_size * gradient_accumulation_steps * num_gpus
     # FALLBACK: If OOM, reduce train_batch to 24 and set gradient_accumulation to 2
 
@@ -278,7 +320,9 @@ class TrainingConfig(BaseModel):
     logging_steps: int = 5  # Log häufiger (wegen größerer Batches)
     eval_steps: int = 50  # Evaluate häufiger (schnellere Iteration)
     save_steps: int = 200  # Checkpoint häufiger bei schnellerem Training
-    save_total_limit: int = 3  # Keep 3 checkpoints (medical domain warrants extra safety)
+    save_total_limit: int = (
+        3  # Keep 3 checkpoints (medical domain warrants extra safety)
+    )
 
     # Evaluation Strategy
     evaluation_strategy: str = "steps"  # Alternativen: "epoch", "no"
@@ -302,15 +346,17 @@ class TrainingConfig(BaseModel):
         "k_proj",
         "o_proj",
         "gate_proj",  # Added for Llama 3.1 architecture
-        "up_proj",    # Added for better coverage
+        "up_proj",  # Added for better coverage
         "down_proj",  # Added for MLP layers
     ]  # Erweitert für vollständige Abdeckung
 
     # Checkpointing
     gradient_checkpointing: bool = False  # Disabled - RTX 5090 hat genug VRAM!
-    
+
     # PyTorch 2.0+ Compiler (20-40% speedup through graph optimization)
-    torch_compile: bool = True  # CRITICAL: Enable in trainer setup with torch.compile(model)
+    torch_compile: bool = (
+        True  # CRITICAL: Enable in trainer setup with torch.compile(model)
+    )
 
     # Reproducibility
     seed: int = 42  # Für reproduzierbare Ergebnisse
@@ -406,18 +452,19 @@ class ExperimentConfig(BaseModel):
     """
     Konfiguration für ein spezifisches Experiment.
 
-    Warum wichtig: Ermöglicht das Ausführen verschiedener Experimente
-    mit unterschiedlichen Konfigurationen und deren Vergleich.
+    Neue Struktur:
+    - LLMs werden zero-shot evaluiert (ohne Training)
+    - SLMs werden finetuned und dann evaluiert
     """
 
-    experiment_name: str = "baseline_experiment"
-    experiment_description: str = "Initial baseline experiment"
-    tags: List[str] = []
+    experiment_name: str = "size_vs_specialization"
+    experiment_description: str = "Compare large untrained vs. small finetuned models"
+    tags: List[str] = ["medical", "icd10", "finetuning", "lora"]
 
-    # Welche Modelle sollen verglichen werden?
-    run_baseline_llm: bool = True
-    run_baseline_slm: bool = True  # SLM ohne Finetuning
-    run_finetuned_slm: bool = True
+    # Welche Modell-Gruppen sollen evaluiert werden?
+    run_llm_evaluation: bool = True  # Evaluiere große Modelle (zero-shot)
+    run_slm_finetuning: bool = True  # Finetune kleine Modelle
+    run_slm_evaluation: bool = True  # Evaluiere finetuned kleine Modelle
 
     # Experiment Reproducibility
     seed: int = 42
@@ -450,7 +497,7 @@ class Config(BaseModel):
 
         with open(path, "w") as f:
             # Custom JSON encoder für Path objects
-            json.dump(self.dict(), f, indent=2, default=str)
+            json.dump(self.model_dump(), f, indent=2, default=str)
 
     @classmethod
     def load(cls, path: Path) -> "Config":
@@ -466,7 +513,7 @@ class Config(BaseModel):
         Initialisiert alle Verzeichnisse und Basis-Einstellungen.
 
         Diese Methode sollte zu Beginn jedes Experiments aufgerufen werden.
-        
+
         Expert Optimization Stack (RTX 5090):
         1. TF32 Acceleration (10-20% speedup)
         2. Native BF16 (no quantization overhead)
@@ -474,7 +521,7 @@ class Config(BaseModel):
         4. Fused AdamW (10-15% optimizer speedup)
         5. torch.compile (20-40% graph optimization)
         6. Maximized batch sizes (2x throughput)
-        
+
         Expected: 3-5x faster training vs. baseline configuration
         """
         # Erstelle alle Verzeichnisse
@@ -482,7 +529,7 @@ class Config(BaseModel):
 
         # Setze Seeds für Reproduzierbarkeit
         self._set_seeds()
-        
+
         # Aktiviere TF32 für Hardware-Beschleunigung (Ampere/Blackwell GPUs)
         self.enable_tf32()
 
@@ -511,17 +558,17 @@ class Config(BaseModel):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
         # Note: Dies kann Training verlangsamen, garantiert aber Reproduzierbarkeit
-    
+
     def enable_tf32(self) -> None:
         """
         Aktiviert TensorFloat-32 (TF32) für NVIDIA Ampere/Blackwell GPUs.
-        
+
         Warum wichtig: TF32 bietet ~10-20% Geschwindigkeitsvorteil bei
         BF16/FP32 Mixed Precision Training auf RTX 30xx/40xx/50xx GPUs.
         Automatisch für matmul und convolutions aktiviert.
         """
         import torch
-        
+
         if torch.cuda.is_available():
             torch.backends.cuda.matmul.allow_tf32 = True
             torch.backends.cudnn.allow_tf32 = True
@@ -550,7 +597,7 @@ __all__ = [
     "Config",
     "PathConfig",
     "DataConfig",
-    "LLMModelConfig",
+    "ModelInstanceConfig",
     "ModelConfig",
     "TrainingConfig",
     "EvaluationConfig",

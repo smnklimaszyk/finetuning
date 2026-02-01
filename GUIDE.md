@@ -39,41 +39,116 @@ Basierend auf Arzt-Patienten-Dialogen schlägt das Modell passende **ICD-10 Diag
 Arzt-Patienten-Dialog → KI-Modell → ICD-10 Code Vorschlag
 ```
 
-### 1.2 Die drei Modell-Ansätze
+### 1.2 Experimentelles Design: Größe vs. Spezialisierung
 
-Wir vergleichen drei verschiedene Ansätze:
+**Zentrale Forschungsfrage:**
+> Können spezialisierte kleine Modelle (3B) größere untrainierte Modelle (7-8B) schlagen?
 
-| Ansatz            | Beschreibung                    | Vorteile                                 | Nachteile                           |
-| ----------------- | ------------------------------- | ---------------------------------------- | ----------------------------------- |
-| **Baseline LLM**  | Großes Modell mit System-Prompt | Generelles Wissen, keine Anpassung nötig | Langsam, teuer, Datenschutz-Risiken |
-| **Baseline SLM**  | Kleines Modell ohne Finetuning  | Schnell, günstig, lokal                  | Weniger spezialisiert               |
-| **Finetuned SLM** | Kleines Modell nach Training    | Schnell, spezialisiert, lokal            | Trainingsaufwand                    |
+Wir vergleichen zwei fundamentale Ansätze:
+
+| Ansatz | Beschreibung | Modelle | Vorteil | Nachteil |
+|--------|--------------|---------|---------|----------|
+| **LLMs (Large, Untrained)** | Große Modelle (7-8B) ohne Finetuning | Llama 8B, Mistral 7B | Mehr Parameter = mehr Wissen | Langsamer, mehr Ressourcen |
+| **SLMs (Small, Finetuned)** | Kleine Modelle (3B) mit LoRA Finetuning | Llama 3B, Qwen 3B | Schneller, spezialisiert, effizient | Trainingsaufwand |
+
+**Was wir testen:**
+- **Size Advantage**: Haben 7-8B Modelle genug Wissen für medizinische Diagnosen?
+- **Specialization Advantage**: Kann Finetuning den Größennachteil kompensieren?
+- **Deployment Trade-offs**: Performance vs. Effizienz
 
 ### 1.3 Architektur-Übersicht
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        MAIN PIPELINE                            │
+│                    EXPERIMENTAL PIPELINE                        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────────┐ │
-│  │  Data    │ → │  Model   │ → │ Training │ → │  Evaluation  │ │
-│  │  Layer   │   │  Layer   │   │  Layer   │   │    Layer     │ │
-│  └──────────┘   └──────────┘   └──────────┘   └──────────────┘ │
-│       ↓              ↓              ↓               ↓          │
-│  ┌──────────────────────────────────────────────────────────┐  │
-│  │                   CONFIG LAYER                           │  │
-│  │         (Zentrale Konfiguration für alles)              │  │
-│  └──────────────────────────────────────────────────────────┘  │
+│  PHASE 1: LLM Evaluation (Zero-Shot)                          │
+│  ┌──────────────────────────────────────────────────────┐      │
+│  │  Llama 8B  →  Zero-Shot Predict  →  Evaluate        │      │
+│  │  Mistral 7B → Zero-Shot Predict  →  Evaluate        │      │
+│  └──────────────────────────────────────────────────────┘      │
+│                            ↓                                    │
+│         (Memory Cleanup & GPU Reset)                           │
+│                            ↓                                    │
+│  PHASE 2: SLM Finetuning + Evaluation                         │
+│  ┌──────────────────────────────────────────────────────┐      │
+│  │  Llama 3B  →  LoRA Train  →  Evaluate Finetuned    │      │
+│  │  Qwen 3B   →  LoRA Train  →  Evaluate Finetuned    │      │
+│  └──────────────────────────────────────────────────────┘      │
+│                            ↓                                    │
+│  RESULT: Compare Size vs. Specialization                      │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 2. Theoretische Grundlagen
+## 2. Experimentelles Design (NEU!)
 
-### 2.1 Was ist Finetuning?
+### 2.1 Die zentrale Forschungsfrage
+
+**Kann Spezialisierung Größe schlagen?**
+
+In diesem Projekt testen wir eine fundamentale Hypothese im Machine Learning:
+
+> Können kleine, spezialisierte Modelle (3B Parameter mit Finetuning)
+> größere, generelle Modelle (7-8B Parameter ohne Finetuning)
+> bei spezifischen Aufgaben übertreffen?
+
+### 2.2 Warum ist das wichtig?
+
+**Praktische Relevanz:**
+- **Kosten:** Kleinere Modelle = weniger GPU-Kosten
+- **Latenz:** 3B Modelle sind 2-3x schneller als 8B Modelle
+- **Datenschutz:** Kleine Modelle können lokal laufen (kein Cloud-Upload)
+- **Energie:** Weniger Parameter = weniger Stromverbrauch
+
+**Wissenschaftliche Relevanz:**
+- Versteht man die Trade-offs zwischen Größe und Spezialisierung?
+- Wann lohnt sich Finetuning?
+- Gibt es einen "Sweet Spot" zwischen Größe und Effizienz?
+
+### 2.3 Experimenteller Aufbau
+
+```
+LLMs (Size Advantage)           SLMs (Specialization Advantage)
+├─ Llama 8B (untrained)        ├─ Llama 3B (LoRA finetuned)
+└─ Mistral 7B (untrained)      └─ Qwen 3B (LoRA finetuned)
+
+        ↓                               ↓
+   Zero-Shot                     Domain-Adapted
+   Inference                     Inference
+        ↓                               ↓
+   ┌─────────────────────────────────────┐
+   │     ICD-10 Code Classification      │
+   │        (Medical Diagnosis)          │
+   └─────────────────────────────────────┘
+        ↓                               ↓
+   Performance                     Performance
+   Comparison                      Comparison
+```
+
+### 2.4 Erwartete Ergebnisse
+
+**Mögliches Szenario 1: SLMs gewinnen**
+- Finetuning kompensiert Größennachteil
+- → Empfehlung: Nutze kleine finetuned Modelle in Produktion
+
+**Mögliches Szenario 2: LLMs gewinnen**
+- Allgemeines Wissen wichtiger als Spezialisierung
+- → Empfehlung: Nutze größere Modelle auch ohne Finetuning
+
+**Mögliches Szenario 3: Nuanciert**
+- SLMs besser bei häufigen Diagnosen
+- LLMs besser bei seltenen/komplexen Fällen
+- → Empfehlung: Hybrid-System je nach Use Case
+
+---
+
+## 3. Theoretische Grundlagen
+
+### 3.1 Was ist Finetuning?
 
 **Finetuning** ist das Anpassen eines vortrainierten Modells auf eine spezifische Aufgabe.
 
@@ -88,7 +163,7 @@ Vortrainiertes Modell     Finetuning        Spezialisiertes Modell
 - Finetuning braucht viel weniger Daten (1000e vs. Milliarden)
 - Schneller und günstiger
 
-### 2.2 Was ist LoRA?
+### 3.2 Was ist LoRA?
 
 **LoRA (Low-Rank Adaptation)** ist eine effiziente Finetuning-Methode.
 
@@ -115,7 +190,7 @@ Wobei:
 - `B` = Up-Projection (niedrig-dimensionaler Raum → Output)
 - `r` = Rank (typisch 8-64, kontrolliert Kapazität)
 
-### 2.3 ICD-10 Klassifikation
+### 3.3 ICD-10 Klassifikation
 
 **ICD-10** (International Classification of Diseases) ist das weltweite Standard-System für Diagnosen.
 
@@ -141,9 +216,9 @@ J06.9
 
 ---
 
-## 3. Projektstruktur Erklärt
+## 4. Projektstruktur Erklärt
 
-### 3.1 Verzeichnisstruktur
+### 4.1 Verzeichnisstruktur
 
 ```
 finetuning/
@@ -624,31 +699,46 @@ source .venv/bin/activate  # Linux/Mac
 pip install -e ".[dev]"
 ```
 
-#### Schritt 2: Nur Baseline-Evaluation
+#### Schritt 2: Memory-Optimierung aktivieren (WICHTIG!)
 
 ```bash
-# Testet LLM und SLM ohne Training
+# Setze PyTorch Environment Variable für besseres Memory Management
+export PYTORCH_ALLOC_CONF=expandable_segments:True
+
+# Für permanente Aktivierung in ~/.bashrc oder ~/.zshrc:
+echo 'export PYTORCH_ALLOC_CONF=expandable_segments:True' >> ~/.bashrc
+```
+
+#### Schritt 3: Nur LLM Evaluation (ohne Training)
+
+```bash
+# Testet nur große Modelle (zero-shot)
+# Nützlich für schnellen Test der LLM-Performance
 python main.py --experiment baseline
 ```
 
-#### Schritt 3: Vollständiger Durchlauf
+#### Schritt 4: Vollständiger Durchlauf (LLMs + SLM Training)
 
 ```bash
-# Baseline + Training + Evaluation
+# PHASE 1: Evaluiert LLMs (Llama 8B, Mistral 7B)
+# PHASE 2: Trainiert und evaluiert SLMs (Llama 3B, Qwen 3B)
 python main.py --experiment full
 ```
 
-#### Schritt 4: Nur Training (mit existierender Baseline)
+#### Schritt 5: Nur SLM Training (ohne LLM Evaluation)
 
 ```bash
 python main.py --experiment training
 ```
 
-#### Schritt 5: Ergebnisse analysieren
+#### Schritt 6: Ergebnisse analysieren
 
 ```bash
 # Öffne generierten Report
 open outputs/reports/evaluation_report.html
+
+# Oder inspiziere results.json
+cat outputs/reports/results.json
 ```
 
 ### 9.2 CLI-Optionen
@@ -669,27 +759,50 @@ Options:
 In `config/base_config.py`:
 
 ```python
-# Standard-Konfiguration mit mehreren Baseline-LLMs:
-# (Ermöglicht Vergleich verschiedener Modellgrößen)
-baseline_llm_names = [
-    "Qwen/Qwen2.5-3B-Instruct",           # 3B Parameter - schnell
-    "mistralai/Mistral-7B-Instruct-v0.3",  # 7B Parameter - bessere Qualität
+# === LLMs: Große Modelle (zero-shot) ===
+llm_models = [
+    ModelInstanceConfig(
+        name="meta-llama/Meta-Llama-3.1-8B-Instruct",
+        size="8B",
+        description="Large reference model",
+        load_in_4bit=True,
+    ),
+    ModelInstanceConfig(
+        name="mistralai/Mistral-7B-Instruct-v0.3",
+        size="7B",
+        description="Medium reference model",
+        load_in_4bit=True,
+    ),
 ]
 
-# Für kleinere GPU (< 8GB VRAM):
-baseline_llm_names = ["TinyLlama/TinyLlama-1.1B-Chat-v1.0"]
-slm_name = "microsoft/phi-2"
-
-# Für größere GPU (16GB+ VRAM) - mit gated Models (Lizenz erforderlich):
-baseline_llm_names = [
-    "meta-llama/Llama-3.2-3B-Instruct",  # Benötigt HuggingFace-Genehmigung
-    "Qwen/Qwen2.5-3B-Instruct",
+# === SLMs: Kleine Modelle (werden finetuned) ===
+slm_models = [
+    ModelInstanceConfig(
+        name="meta-llama/Llama-3.2-3B-Instruct",
+        size="3B",
+        description="Compact model for finetuning",
+        load_in_4bit=False,  # Full precision für Training
+        dtype="bfloat16",
+    ),
+    ModelInstanceConfig(
+        name="Qwen/Qwen2.5-3B-Instruct",
+        size="3B",
+        description="Alternative compact model",
+        load_in_4bit=False,
+        dtype="bfloat16",
+    ),
 ]
-slm_name = "microsoft/Phi-3-mini-4k-instruct"
 ```
 
-> **Hinweis:** Für `meta-llama` Modelle müssen Sie die Nutzungsbedingungen auf 
-> HuggingFace akzeptieren: https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct
+**Für kleinere GPUs (<16GB VRAM):**
+```python
+# Nutze nur ein LLM und ein SLM
+llm_models = [ModelInstanceConfig(name="mistralai/Mistral-7B-Instruct-v0.3", size="7B", ...)]
+slm_models = [ModelInstanceConfig(name="Qwen/Qwen2.5-3B-Instruct", size="3B", ...)]
+```
+
+> **Hinweis:** Für `meta-llama` Modelle müssen Sie die Nutzungsbedingungen auf
+> HuggingFace akzeptieren: https://huggingface.co/meta-llama
 
 ---
 
@@ -699,21 +812,36 @@ slm_name = "microsoft/Phi-3-mini-4k-instruct"
 
 **Symptom:** `CUDA out of memory`
 
-**Lösungen:**
+**Neue verbesserte Memory-Management-Lösung:**
+
+```bash
+# 1. Setze PyTorch Environment Variable (WICHTIG!)
+export PYTORCH_ALLOC_CONF=expandable_segments:True
+python main.py --experiment full
+```
+
+**In der Config anpassen:**
 
 ```python
-# 1. Kleinere Batch Size
-training.per_device_train_batch_size = 2
+# 2. Kleinere Batch Size
+training.per_device_train_batch_size = 16  # Statt 32
 
-# 2. Mehr Gradient Accumulation
-training.gradient_accumulation_steps = 8
+# 3. Mehr Gradient Accumulation
+training.gradient_accumulation_steps = 2  # Statt 1
 
-# 3. Aktiviere 4-bit Quantisierung
-model.slm_load_in_4bit = True
+# 4. Aktiviere 4-bit Quantisierung für LLMs (bereits Standard)
+llm_models = [
+    ModelInstanceConfig(..., load_in_4bit=True)
+]
 
-# 4. Aktiviere Gradient Checkpointing
+# 5. Gradient Checkpointing bei Bedarf
 training.gradient_checkpointing = True
 ```
+
+**Die neue Pipeline cleaned automatisch:**
+- Nach jedem LLM Evaluation: `aggressive_memory_cleanup()`
+- Nach jedem SLM Training: `aggressive_memory_cleanup()`
+- GPU Memory wird zwischen Modellen vollständig freigegeben
 
 ### 10.2 Training konvergiert nicht
 
