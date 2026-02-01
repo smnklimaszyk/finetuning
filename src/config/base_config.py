@@ -186,6 +186,11 @@ class ModelConfig(BaseModel):
                 load_in_4bit=True,
             ),
             LLMModelConfig(
+                name="meta-llama/Llama-3.2-3B-Instruct",
+                description="3B Parameter - Meta's neuestes kompaktes Llama Modell",
+                load_in_4bit=True,
+            ),
+            LLMModelConfig(
                 name="mistralai/Mistral-7B-Instruct-v0.3",
                 description="7B Parameter - größere Referenz für Vergleich",
                 load_in_4bit=True,
@@ -202,7 +207,8 @@ class ModelConfig(BaseModel):
     slm_load_in_4bit: bool = True
 
     # Tokenizer Settings
-    tokenizer_padding_side: str = "right"
+    # Wichtig: "left" für Decoder-Only Modelle bei Batched Generation!
+    tokenizer_padding_side: str = "left"
     tokenizer_truncation_side: str = "right"
     add_special_tokens: bool = True
 

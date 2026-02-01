@@ -83,6 +83,10 @@ class LLMModel(BaseModel):
             self.model_name, trust_remote_code=self.trust_remote_code
         )
 
+        # Wichtig: Für Decoder-Only Modelle muss padding links sein!
+        # Sonst gibt es Probleme bei der Generierung mit gepadten Batches
+        self.tokenizer.padding_side = "left"
+        
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
