@@ -1,4 +1,4 @@
-# 🏥 Medical Diagnosis Model Finetuning
+# Medical Diagnosis Model Finetuning
 
 **Datenschutzkonformes Finetuning eines Small Language Models für medizinische Diagnoseunterstützung**
 
@@ -7,11 +7,11 @@
 
 ---
 
-## 🎯 Projektziel
+## Projektziel
 
 Dieses Projekt entwickelt ein spezialisiertes KI-Modell zur Unterstützung von Ärzten bei der Diagnosestellung. Basierend auf Arzt-Patienten-Dialogen schlägt das Modell passende **ICD-10 Diagnose-Codes** vor.
 
-## 📊 Vergleich
+## Vergleich
 
 Wir vergleichen drei Ansätze:
 
@@ -21,7 +21,7 @@ Wir vergleichen drei Ansätze:
 | **Baseline SLM**  | Kleines Modell ohne Finetuning    |
 | **Finetuned SLM** | Kleines Modell nach LoRA-Training |
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # 1. Environment einrichten
@@ -40,7 +40,7 @@ python main.py --experiment full
 
 ```
 finetuning/
-├── src/            # 📦 Python Packages
+├── src/            # Python Packages
 │   ├── config/     # Konfiguration
 │   ├── data/       # Datenverarbeitung
 │   ├── models/     # Modell-Wrapper
@@ -67,18 +67,10 @@ finetuning/
 - **BitsAndBytes** - Quantisierung
 - **MLflow** - Experiment Tracking
 
-## 📊 Daten
+## Daten
 
 Der [MedSynth-Datensatz](https://huggingface.co/datasets/Ahmad0067/MedSynth) enthält:
 
 - Synthetische Arzt-Patienten-Dialoge
 - ICD-10 Diagnose-Codes
-- Ca. 50.000 Beispiele
-
-## ⚠️ Disclaimer
-
-Dieses Modell dient **nur zur Forschung und Unterstützung**. Es ersetzt **keine ärztliche Diagnose**.
-
-## 📄 Lizenz
-
-MIT License
+- Ca. 10.000 Beispiele
