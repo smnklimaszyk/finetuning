@@ -204,19 +204,45 @@ class LLMModel(BaseModel):
         return all_predictions
 
     def extract_icd_code(self, generated_text: str) -> str:
-        """Extrahiert ICD-10 Code aus generiertem Text."""
-        text = generated_text.strip()
+        """
+        Extrahiert ICD-10 Code aus generiertem Text.
 
+        Unterstützt beide Formate:
+        - Standard ICD-10: A12.34, J06.9, M25.562 (mit Punkt)
+        - MedSynth Format: A1234, J069, M25562 (ohne Punkt)
+
+        Gibt immer das Format OHNE Punkt zurück für konsistente Vergleiche.
+        """
         import re
 
-        pattern = r"\b[A-Z]\d{2}(?:\.\d{1,2})?\b"
-        matches = re.findall(pattern, text)
+        text = generated_text.strip().upper()
 
+        # Pattern 1: Standard ICD-10 mit Punkt (z.B. H60.9, M25.562, J06.9)
+        # Erlaubt 1-4 Ziffern nach dem Punkt
+        pattern_with_dot = r"\b([A-Z]\d{2})\.(\d{1,4})\b"
+        matches = re.findall(pattern_with_dot, text)
+        if matches:
+            # Kombiniere ohne Punkt: H60.9 -> H609
+            return matches[0][0] + matches[0][1]
+
+        # Pattern 2: MedSynth Format ohne Punkt (z.B. H609, M25562, B9562)
+        # Letter + 2-6 Ziffern
+        pattern_no_dot = r"\b([A-Z]\d{2,6})\b"
+        matches = re.findall(pattern_no_dot, text)
         if matches:
             return matches[0]
 
+        # Pattern 3: Nur Hauptkategorie (z.B. A12, J06)
+        pattern_short = r"\b([A-Z]\d{2})\b"
+        matches = re.findall(pattern_short, text)
+        if matches:
+            return matches[0]
+
+        # Fallback: Erste Zeile, bereinigt
         lines = text.split("\n")
         if lines:
-            return lines[0].strip()
+            first_line = lines[0].strip()
+            # Entferne Punkt falls vorhanden
+            return first_line.replace(".", "")[:10]
 
-        return text
+        return text.replace(".", "")[:10]

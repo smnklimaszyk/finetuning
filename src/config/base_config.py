@@ -133,7 +133,9 @@ class DataConfig(BaseModel):
     test_ratio: float = 0.15
 
     # Datenverarbeitungs-Parameter
-    max_sequence_length: int = 512  # Maximum Token-Länge
+    # WICHTIG: MedSynth Dialoge haben durchschnittlich ~1167 Tokens
+    # 512 würde >99% der Dialoge abschneiden und wichtige Informationen verlieren!
+    max_sequence_length: int = 2048  # Erhöht von 512 - deckt 99%+ der Dialoge ab
     truncation: bool = True
     padding: str = "max_length"
 

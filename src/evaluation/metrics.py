@@ -26,20 +26,32 @@ class MedicalDiagnosisEvaluator:
         self.references = []
         self.metrics = {}
 
+    def _normalize_icd_code(self, code: str) -> str:
+        """
+        Normalisiert ICD-10 Code für fairen Vergleich.
+
+        - Entfernt Punkte (H60.9 -> H609)
+        - Entfernt Whitespace
+        - Uppercase
+        """
+        if not code:
+            return ""
+        return code.replace(".", "").strip().upper()
+
     def add_batch(self, predictions: List[str], references: List[str]):
         """Fügt einen Batch von Predictions hinzu."""
         self.predictions.extend(predictions)
         self.references.extend(references)
 
     def compute_exact_match_accuracy(self) -> float:
-        """Berechnet Exact Match Accuracy."""
+        """Berechnet Exact Match Accuracy mit normalisiertem Vergleich."""
         if not self.predictions or not self.references:
             return 0.0
 
         matches = sum(
             1
             for pred, ref in zip(self.predictions, self.references)
-            if pred.strip().upper() == ref.strip().upper()
+            if self._normalize_icd_code(pred) == self._normalize_icd_code(ref)
         )
         return matches / len(self.predictions)
 
@@ -47,6 +59,7 @@ class MedicalDiagnosisEvaluator:
         """
         Berechnet Prefix Match Accuracy.
         Nützlich weil ICD-10 hierarchisch ist (J06.9 -> J06 -> J).
+        Vergleicht normalisierte Codes.
         """
         if not self.predictions or not self.references:
             return 0.0
@@ -54,7 +67,7 @@ class MedicalDiagnosisEvaluator:
         matches = sum(
             1
             for pred, ref in zip(self.predictions, self.references)
-            if pred[:prefix_length].upper() == ref[:prefix_length].upper()
+            if self._normalize_icd_code(pred)[:prefix_length] == self._normalize_icd_code(ref)[:prefix_length]
         )
         return matches / len(self.predictions)
 
@@ -70,13 +83,17 @@ class MedicalDiagnosisEvaluator:
         return self.compute_exact_match_accuracy()
 
     def compute_classification_metrics(self) -> Dict:
-        """Berechnet Precision, Recall, F1."""
+        """Berechnet Precision, Recall, F1 mit normalisierten Codes."""
         if not self.predictions or not self.references:
             return {}
 
+        # Normalisiere beide Listen für fairen Vergleich
+        normalized_preds = [self._normalize_icd_code(p) for p in self.predictions]
+        normalized_refs = [self._normalize_icd_code(r) for r in self.references]
+
         # Für multi-class classification
         precision, recall, f1, _ = precision_recall_fscore_support(
-            self.references, self.predictions, average="weighted", zero_division=0
+            normalized_refs, normalized_preds, average="weighted", zero_division=0
         )
 
         return {"precision": float(precision), "recall": float(recall), "f1": float(f1)}
@@ -108,18 +125,24 @@ class MedicalDiagnosisEvaluator:
         return metrics
 
     def get_classification_report(self) -> str:
-        """Gibt detaillierten Classification Report zurück."""
+        """Gibt detaillierten Classification Report zurück (mit normalisierten Codes)."""
         if not self.predictions or not self.references:
             return "No predictions available"
 
-        return classification_report(self.references, self.predictions, zero_division=0)
+        normalized_preds = [self._normalize_icd_code(p) for p in self.predictions]
+        normalized_refs = [self._normalize_icd_code(r) for r in self.references]
+
+        return classification_report(normalized_refs, normalized_preds, zero_division=0)
 
     def get_confusion_matrix(self) -> np.ndarray:
-        """Gibt Confusion Matrix zurück."""
+        """Gibt Confusion Matrix zurück (mit normalisierten Codes)."""
         if not self.predictions or not self.references:
             return np.array([])
 
-        return confusion_matrix(self.references, self.predictions)
+        normalized_preds = [self._normalize_icd_code(p) for p in self.predictions]
+        normalized_refs = [self._normalize_icd_code(r) for r in self.references]
+
+        return confusion_matrix(normalized_refs, normalized_preds)
 
     def reset(self):
         """Setzt Evaluator zurück."""
